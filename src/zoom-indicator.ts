@@ -63,7 +63,7 @@ async function setCountdown(seconds: number): Promise<IndicatorResult> {
 
   return isSuccess(response)
     ? successResult('O cliente aceitou a atualização do indicador. A visibilidade entre participantes não foi confirmada nesta sessão.')
-    : failureResult(`O Zoom recusou a atualização do indicador (resposta: ${response.message}). A contagem local continua ativa.`);
+    : failureResult(`O Zoom recusou a atualização do indicador (resposta: ${JSON.stringify(response) ?? String(response)}). A contagem local continua ativa.`);
 }
 
 export async function initializeZoom(): Promise<ZoomSession> {
@@ -122,7 +122,7 @@ function sendTimerAction(
       });
       return isSuccess(response)
         ? successResult(`${successMessage} A visibilidade entre participantes não foi confirmada nesta sessão.`)
-        : failureResult(`${failureMessage} Resposta do Zoom: ${response.message}. O timer local continua ativo.`);
+        : failureResult(`${failureMessage} Resposta do Zoom: ${JSON.stringify(response) ?? String(response)}. O timer local continua ativo.`);
     } catch (error) {
       return failureResult(`${failureMessage} ${errorMessage(error)} O timer local continua ativo.`);
     }
