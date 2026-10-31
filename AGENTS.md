@@ -11,7 +11,8 @@ Este projeto é um Zoom App de cronômetro compartilhado para reuniões. Leia `R
 - Reproduza o conteúdo do app mostrado nas referências: fundo preto, tipografia clara, azul para ações principais, verde durante a contagem e vermelho no último minuto, divisórias discretas e botões arredondados.
 - Use os tempos rápidos 3, 5 e 10 minutos, conforme o requisito do projeto, mesmo que a captura parada mostre 1, 3 e 10.
 - O valor inicial deve ser cinco minutos, exibido como `00:05:00`.
-- Inclua os controles de iniciar, pausar/retomar, encerrar/zerar e acrescentar 30 segundos. Não implemente cronômetro progressivo nem fila de próximos timers na primeira versão.
+- Permita ajustar horas, minutos e segundos separadamente antes de iniciar e enquanto pausado. No mouse, o contorno e os chevrons acompanham o campo sob o ponteiro e desaparecem ao sair; no toque, permanecem visíveis no campo selecionado. Centralize os rótulos e chevrons em cada campo; oculte os rótulos das unidades durante a pausa.
+- Inclua os controles de iniciar, pausar/retomar e encerrar/zerar. Não inclua acréscimo de tempo, cronômetro progressivo nem fila de próximos timers nesta versão.
 - Traduza os rótulos da interface para português do Brasil, preservando a hierarquia visual das imagens.
 - Não recrie barra de status do iOS/Android, cabeçalho do Zoom, moldura da reunião, vídeo de participante ou controles do sistema. Eles não pertencem ao conteúdo web do app. A origem e a função do avatar e do seletor na parte inferior das capturas ainda não foram confirmadas; não os interprete como controles do timer sem evidência.
 
@@ -31,7 +32,7 @@ Este projeto é um Zoom App de cronômetro compartilhado para reuniões. Leia `R
 
 - Calcule o tempo restante com base em um prazo final (`deadline`), não decrementando um contador fixo a cada intervalo.
 - Ao pausar, guarde o tempo restante; ao retomar, gere um novo prazo final.
-- Ao acrescentar 30 segundos, atualize o prazo final e a contagem publicada.
+- Alterações manuais nos campos atualizam o tempo restante; durante a pausa, mantenha o timer pausado e sincronize o valor alterado com o indicador Zoom quando disponível.
 - Considere concluído quando o tempo restante chegar a zero; evite valores negativos, salvo se um requisito futuro pedir contagem excedente.
 - A transição visual para vermelho ocorre quando restarem 60 segundos ou menos.
 - Mantenha a lógica do timer separada dos componentes visuais e da ponte com o SDK do Zoom.

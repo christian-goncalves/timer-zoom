@@ -4,7 +4,7 @@ Este documento organiza o desenvolvimento em quatro etapas. O trabalho deve avan
 
 ## Etapa 1 — Preparar o projeto e comprovar a integração
 
-**Andamento neste checkout (2026-10-30):** a estrutura e a prova local foram preparadas. A validação dentro do Zoom Android permanece pendente de configuração do app no Marketplace, URL HTTPS acessível ao aparelho e reunião de teste. A lista de APIs será lida em tempo de execução no cliente, não presumida neste ambiente.
+**Andamento neste checkout (2026-10-31): Etapa 1 concluída.** O app abriu em reunião no Zoom Android 7.2.1.43844 (`product: mobile`, `runningContext: inMeeting`). As APIs `getSupportedJsApis` e `setDynamicIndicator` foram reportadas disponíveis; a chamada de teste retornou `Success`. O indicador “Prova do Timer Zoom” foi visto na barra da reunião do cliente Zoom Workplace desktop. A primeira tentativa falhou porque `getSupportedJsApis` era pedida no código mas não estava selecionada no Marketplace; essa permissão foi alinhada. A checagem com um participante independente não foi registrada.
 
 **Objetivo:** deixar a estrutura pronta no VS Code e confirmar que uma página web consegue abrir como Zoom App no cliente Android.
 
@@ -21,6 +21,8 @@ Este documento organiza o desenvolvimento em quatro etapas. O trabalho deve avan
 
 ## Etapa 2 — Reproduzir a interface das referências
 
+**Andamento neste checkout (2026-10-31): Etapa 2 concluída.** A interface local foi conferida em largura mobile (320 px) e desktop (1280 px), incluindo prévias dos estados em execução e no último minuto; `npm run build` passou. Os controles do timer e os valores de tempo são apenas visuais, sem contagem, pausa, acréscimo ou sincronização com o indicador. A aparência dentro do Zoom Android ainda não foi revalidada após esta etapa.
+
 **Objetivo:** montar a tela visual do timer, adaptada ao espaço disponível dentro do Zoom.
 
 **Especificação mínima:**
@@ -28,7 +30,7 @@ Este documento organiza o desenvolvimento em quatro etapas. O trabalho deve avan
 - Usar como referência `docs/references/timer-idle-reference.jpeg` e `docs/references/timer-running-reference.jpeg`.
 - Reproduzir fundo preto, visor amplo, tipografia clara, azul nas ações principais, verde durante a contagem e vermelho para o último minuto.
 - Usar os tempos rápidos **3, 5 e 10 minutos** e iniciar com **5 minutos**; os valores do projeto substituem os valores diferentes mostrados na captura.
-- Preparar estados visuais parado e em execução, com botões de iniciar, pausar/retomar, encerrar e acrescentar 30 segundos.
+- Preparar estados visuais parado e em execução, com botões de iniciar, pausar/retomar e encerrar. O estado em execução alinha Pausar/Retomar e Zerar ao lado do visor na mesma linha.
 - Usar rótulos em português do Brasil e manter a interface responsiva, priorizando celular.
 - Não redesenhar a barra de status do celular, o cabeçalho do Zoom, o vídeo/avatar do participante ou outros elementos do cliente Zoom.
 
@@ -36,11 +38,14 @@ Este documento organiza o desenvolvimento em quatro etapas. O trabalho deve avan
 
 ## Etapa 3 — Implementar o cronômetro e sincronizar com o Zoom
 
+**Andamento neste checkout (2026-10-31): implementação local concluída.** Os controles usam contagem por prazo final; horas, minutos e segundos também podem ser ajustados individualmente antes de iniciar ou enquanto pausado. O contorno e chevrons seguem o hover do mouse e a seleção por toque. Durante a pausa, os nomes das unidades ficam ocultos e o visor mantém o alinhamento da execução. As cores do visor acompanham o último minuto e o app solicita/consulta `setDynamicIndicator`, `getDynamicIndicator`, `removeDynamicIndicator` e `onMeeting`. Falhas da ponte Zoom deixam o cronômetro local funcionando. Por solicitação do usuário, o controle de acréscimo de 30 segundos foi removido; Pausar/Retomar e Zerar ficam ao lado do visor. `npm run build` passou. Ainda não foi validado em cliente Zoom após a implementação; a confirmação de visibilidade por outro participante e o comportamento do indicador no Android pertencem à Etapa 4.
+
 **Objetivo:** ligar os controles da tela à contagem real e ao indicador dinâmico compartilhado.
 
 **Especificação mínima:**
 
-- Implementar seleção de 3, 5 e 10 minutos, iniciar, pausar, retomar, zerar e acrescentar 30 segundos.
+- Implementar seleção de 3, 5 e 10 minutos, iniciar, pausar, retomar e zerar.
+- Permitir selecionar e alterar horas, minutos e segundos com chevrons centralizados; o hover destaca temporariamente o campo no desktop e o toque mantém o campo selecionado no celular. Ocultar os nomes das unidades durante a pausa.
 - Calcular o tempo por horário final, evitando depender de subtrair um segundo por intervalo.
 - Mudar o visor próprio do app para vermelho quando faltarem 60 segundos ou menos.
 - Usar `setDynamicIndicator` para publicar o timer no Zoom quando a API estiver disponível.
@@ -56,7 +61,7 @@ Este documento organiza o desenvolvimento em quatro etapas. O trabalho deve avan
 
 **Especificação mínima:**
 
-- Conferir os estados de seleção, início, pausa, retomada, acréscimo de tempo, último minuto e encerramento.
+- Conferir os estados de seleção, início, pausa, retomada, último minuto e encerramento.
 - Validar o carregamento e as APIs no Zoom Android e no Zoom desktop, anotando diferenças por cliente.
 - Confirmar se o indicador é visível aos participantes e se a cor do indicador nativo muda no último minuto em Android.
 - Corrigir os problemas encontrados dentro do escopo das etapas anteriores.

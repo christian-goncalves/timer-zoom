@@ -11,7 +11,7 @@ O projeto será desenvolvido no VS Code com apoio do Codex. A primeira versão s
 As imagens de referência fornecidas neste checkout estão na raiz (`timer-idle-reference.jpeg` e `timer-running-reference.jpeg`). O caminho `docs/references/` descrito no plano ainda não existe.
 
 - `timer-idle-reference.jpeg`: estado parado, visor em 00:05:00, botão principal e seletores de duração.
-- `timer-running-reference.jpeg`: estado em execução, visor verde, controles de acrescentar tempo, pausar e encerrar.
+- `timer-running-reference.jpeg`: estado em execução, visor verde e controles de pausar e encerrar. O controle de acréscimo de tempo da referência não faz parte da interface solicitada.
 
 Use essas imagens para reproduzir a hierarquia, o contraste, o espaçamento e a simplicidade da tela. O cabeçalho do Zoom, a barra de status do celular e elementos de reunião ao redor do app pertencem ao cliente Zoom/SO. Eles não devem ser redesenhados como parte da página.
 
@@ -19,9 +19,9 @@ Use essas imagens para reproduzir a hierarquia, o contraste, o espaçamento e a 
 
 - Exibir a duração selecionada no formato `HH:MM:SS`, com cinco minutos como valor inicial.
 - Oferecer seletores rápidos de 3, 5 e 10 minutos. Esses valores substituem os botões 1, 3 e 10 minutos vistos na captura parada.
+- Permitir ajustar horas, minutos e segundos pelos chevrons em cada campo. O hover do mouse mostra contorno e setas apenas no campo apontado; no toque, tocar no valor seleciona o campo. Ocultar os nomes das unidades durante a pausa.
 - Permitir iniciar, pausar, retomar e encerrar/zerar a contagem.
 - Durante a contagem, usar verde para o tempo acima de 1 minuto e vermelho quando o tempo restante for igual ou inferior a 60 segundos.
-- Permitir acrescentar 30 segundos, conforme o controle visível na captura em execução.
 - Publicar o timer como indicador dinâmico do Zoom, visível aos participantes, quando a API estiver disponível.
 - Remover ou encerrar o indicador ao zerar/encerrar o timer e tratar o encerramento da reunião.
 - Construir uma interface responsiva, com alvos de toque confortáveis e contraste alto.
@@ -51,10 +51,11 @@ O contador local deve calcular o tempo restante a partir de um horário final, e
 
 1. O app abre dentro do Zoom em uma reunião de teste.
 2. Os botões de 3, 5 e 10 minutos atualizam o visor corretamente.
-3. Iniciar, pausar, retomar, acrescentar 30 segundos e zerar funcionam.
-4. O visor do app muda para vermelho ao entrar no último minuto.
-5. O indicador dinâmico é publicado e visto por participantes em cliente compatível.
-6. O comportamento visual e a disponibilidade das APIs são conferidos em Android real; limitações do SDK ficam registradas, sem simular controles nativos que o Zoom não oferece.
+3. Os campos de horas, minutos e segundos podem ser selecionados e alterados pelos chevrons antes de iniciar e durante a pausa.
+4. Iniciar, pausar, retomar e zerar funcionam.
+5. O visor do app muda para vermelho ao entrar no último minuto.
+6. O indicador dinâmico é publicado e visto por participantes em cliente compatível.
+7. O comportamento visual e a disponibilidade das APIs são conferidos em Android real; limitações do SDK ficam registradas, sem simular controles nativos que o Zoom não oferece.
 
 ## Documentação oficial
 
@@ -66,7 +67,17 @@ O contador local deve calcular o tempo restante a partir de um horário final, e
 
 ## Etapa 1 — prova de integração
 
-A estrutura React, TypeScript e Vite está preparada. A página atual é somente uma prova técnica: chama `zoomSdk.config()` com `getSupportedJsApis` e `setDynamicIndicator`, mostra o produto/versão/contexto retornados pelo cliente e consulta `getSupportedJsApis()`. O botão de prova publica um indicador descendente de 30 segundos apenas quando o cliente declara a API disponível. Esta resposta não confirma a visibilidade do indicador para outros participantes; isso depende do teste em reunião.
+A estrutura React, TypeScript e Vite está preparada. Na Etapa 1, a página de prova chamou `zoomSdk.config()` com `getSupportedJsApis` e `setDynamicIndicator`, mostrou o produto/versão/contexto retornados pelo cliente e consultou `getSupportedJsApis()`. A seção recolhida “Diagnóstico da integração Zoom” preserva a inicialização e a consulta das APIs; o botão de prova isolada foi substituído pela publicação vinculada ao timer na Etapa 3. A validação inicial em 2026-10-31 no Zoom Android 7.2.1.43844 retornou `Success`; em seguida, o cliente Zoom Workplace desktop exibiu “Prova do Timer Zoom” na barra da reunião.
+
+## Etapa 2 — interface visual
+
+**Concluída em 2026-10-31:** a tela visual foi implementada com estado inicial parado em `00:05:00`, presets de 3, 5 e 10 minutos e aparências distintas para execução, pausa e último minuto. A interface local foi conferida em largura mobile (320 px) e desktop (1280 px). A Etapa 3 abaixo conectou os controles à contagem real.
+
+## Etapa 3 — timer e indicador Zoom
+
+**Implementada localmente em 2026-10-31:** os presets e controles operam o timer local por prazo final; horas, minutos e segundos também podem ser ajustados individualmente em repouso ou durante a pausa. No mouse, o contorno e chevrons acompanham o hover; no toque, a seleção persiste. Durante a pausa, os nomes das unidades desaparecem e os dígitos mantêm o alinhamento da execução. O visor fica vermelho nos últimos 60 segundos. O app consulta as APIs atuais e tenta sincronizar o indicador com `setDynamicIndicator`. Erros e APIs ausentes não interrompem a contagem local. A remoção consulta o indicador atual antes de apagar um com o rótulo do Timer Zoom; o encerramento da reunião usa `onMeeting` quando disponível.
+
+A implementação ainda não foi validada no Zoom Android ou desktop. A resposta de uma chamada do SDK não confirma visibilidade aos demais participantes. A cor vermelha é aplicada ao visor web; não foi implementada mudança de estilo do indicador nativo no Android. A limpeza no fim da reunião depende de `onMeeting` estar disponível no cliente. O código solicita `getDynamicIndicator` e `removeDynamicIndicator` além das capacidades da prova inicial; as permissões correspondentes no Marketplace não foram alteradas nesta etapa.
 
 ### Executar localmente
 
@@ -83,7 +94,7 @@ Para abrir a aplicação no Zoom Android, a URL precisa estar acessível ao apar
 2. Nas configurações de Surface/Zoom Client Support, habilite o Mobile Client. Configure a superfície de Meetings para abrir o app durante uma reunião.
 3. Defina a Home URL com a URL HTTPS do túnel que aponta para o servidor Vite.
 4. No fluxo Local Test, complete os campos obrigatórios e adicione/autorize o app no cliente Zoom usado para testar.
-5. No Zoom Android, entre em uma reunião de teste e abra o app. Confira Produto, Versão do Zoom e Contexto, além do resultado para `getSupportedJsApis` e `setDynamicIndicator`.
-6. Se `setDynamicIndicator` estiver disponível, toque em “Publicar indicador de teste”. Verifique o indicador no cliente e peça a um participante da reunião que confirme se também o vê. O indicador enviado tem duração de 30 segundos.
+5. No Zoom Android, entre em uma reunião de teste e abra o app. Confira Produto, Versão do Zoom e Contexto, além das APIs disponíveis na seção “Diagnóstico da integração Zoom”.
+6. Para validar a Etapa 3, use os controles do timer e confira o visor e as mensagens de sincronização. Confirme a visibilidade do indicador em outro participante; a resposta `Success` do SDK, sozinha, não confirma essa visibilidade.
 
-**Validação Android pendente:** este ambiente não está conectado a uma conta do Marketplace nem a um cliente Zoom Android. Portanto, não foi possível observar a resposta real de `config()`, a lista de APIs do aparelho, a abertura no Android ou a visualização por participantes. Consulte a versão instalada no aparelho; a documentação do SDK lista `setDynamicIndicator` para Android a partir da versão 5.16.0. Se a API não aparecer como disponível, confira a versão do cliente e a configuração do app no Marketplace antes de avançar.
+**Etapa 1 validada em 2026-10-31:** o app abriu no Zoom Android em contexto `inMeeting`; `getSupportedJsApis` e `setDynamicIndicator` foram reportadas como disponíveis. Após habilitar também `getSupportedJsApis` no Marketplace (o código já solicitava essa API), a chamada de `setDynamicIndicator` respondeu `Success`. A barra de reunião do Zoom Workplace desktop mostrou “Prova do Timer Zoom”. A visibilidade foi confirmada no cliente desktop; a validação com um participante independente ainda não foi registrada. O aviso `unsupportedApis: setVirtualBackground` também apareceu, mas essa API não é solicitada nem usada pela prova.
