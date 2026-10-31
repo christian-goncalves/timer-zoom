@@ -10,13 +10,17 @@ import {
 import { TimeUnitControl, type TimeUnit } from './TimeUnitControl';
 import { useTimer } from './use-timer';
 import {
+  getIndicatorDiagnostics,
   initializeZoom,
   pauseIndicator,
   removeTimerIndicator,
   requestedApis,
   resumeIndicator,
   setIndicatorTimer,
+  subscribeToIndicatorDiagnostics,
+  subscribeToIndicatorSet,
   subscribeToMeetingEnd,
+  type IndicatorDiagnostic,
   type IndicatorResult,
   type ZoomSession,
 } from './zoom-indicator';
@@ -31,10 +35,12 @@ export default function App() {
   const [checkState, setCheckState] = useState<CheckState>('loading');
   const [session, setSession] = useState<ZoomSession | null>(null);
   const [sdkMessage, setSdkMessage] = useState('Inicializando Zoom Apps SDK…');
+  const [indicatorDiagnostics, setIndicatorDiagnostics] = useState<IndicatorDiagnostic[]>(getIndicatorDiagnostics);
   const [notice, setNotice] = useState<Notice>({ tone: 'info', text: 'Preparando o timer…' });
   const noticeSequence = useRef(0);
   const sessionRef = useRef<ZoomSession | null>(null);
   const meetingEndUnsubscribe = useRef<(() => void) | null>(null);
+  const indicatorEventUnsubscribe = useRef<(() => void) | null>(null);
   const previousStatus = useRef(timer.status);
   const isEditable = timer.status === 'idle' || timer.status === 'finished' || timer.status === 'paused';
 
@@ -79,6 +85,8 @@ export default function App() {
     reportIndicatorOperation(removeTimerIndicator(currentSession), 'Encerrando o timer e removendo o indicador…');
   }
 
+  useEffect(() => subscribeToIndicatorDiagnostics(setIndicatorDiagnostics), []);
+
   useEffect(() => {
     let active = true;
 
@@ -107,6 +115,7 @@ export default function App() {
           );
         });
         meetingEndUnsubscribe.current = unsubscribe;
+        indicatorEventUnsubscribe.current = subscribeToIndicatorSet(initializedSession) ?? null;
 
         const currentTimer = timerRef.current;
         if (currentTimer.status === 'running' || currentTimer.status === 'paused') {
@@ -132,6 +141,8 @@ export default function App() {
       active = false;
       meetingEndUnsubscribe.current?.();
       meetingEndUnsubscribe.current = null;
+      indicatorEventUnsubscribe.current?.();
+      indicatorEventUnsubscribe.current = null;
     };
   }, [reset, timerRef]);
 
@@ -375,6 +386,25 @@ export default function App() {
                 </li>
               ))}
             </ul>
+            <div className="indicator-log-header">
+              <h2>Registro do indicador</h2>
+              <span>{indicatorDiagnostics.length} eventos · mais recentes primeiro</span>
+            </div>
+            {indicatorDiagnostics.length ? (
+              <ol className="indicator-log" aria-live="polite">
+                {indicatorDiagnostics.map((entry) => (
+                  <li key={entry.id}>
+                    <div className="indicator-log-meta">
+                      <time>{entry.timestamp}</time>
+                      <strong>{entry.operation}</strong>
+                    </div>
+                    <pre>{entry.details}</pre>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p className="indicator-log-empty">Inicie o timer para registrar envio, retorno e leitura do indicador.</p>
+            )}
           </div>
         </details>
       </div>
