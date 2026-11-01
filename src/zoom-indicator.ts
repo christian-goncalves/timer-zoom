@@ -171,7 +171,7 @@ async function callSetDynamicIndicator(
 }
 
 async function setCountdown(session: ZoomSession, seconds: number, readAgainAfterTwoSeconds: boolean): Promise<IndicatorResult> {
-  const options = createCountdownPayload(seconds);
+  const options = createCountdownPayload(seconds, session.config.product === 'mobile');
   const response = await callSetDynamicIndicator(session, 'setDynamicIndicator · start', options, readAgainAfterTwoSeconds);
 
   return isSuccess(response)

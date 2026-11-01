@@ -6,8 +6,9 @@ export function toZoomMilliseconds(seconds: number): number {
   return Math.max(1, Math.ceil(seconds)) * 1_000;
 }
 
-export function createCountdownPayload(seconds: number) {
+export function createCountdownPayload(seconds: number, includeText = false) {
   return {
+    ...(includeText ? { text: TIMER_INDICATOR_TEXT } : {}),
     timer: {
       action: 'start' as const,
       direction: 'down' as const,

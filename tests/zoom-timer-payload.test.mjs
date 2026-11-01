@@ -20,6 +20,11 @@ test('start publica uma contagem regressiva de cinco minutos', () => {
   });
 });
 
+test('start inclui o texto do indicador somente quando solicitado para o teste Mobile', () => {
+  assert.equal(createCountdownPayload(300, true).text, 'Timer Zoom');
+  assert.equal('text' in createCountdownPayload(300), false);
+});
+
 test('pause, resume e end preservam a ação nativa', () => {
   for (const action of ['pause', 'resume', 'end']) {
     assert.deepEqual(createTimerActionPayload(action), {
