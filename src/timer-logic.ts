@@ -94,6 +94,17 @@ export function resetTimer(timer: TimerSnapshot): TimerSnapshot {
   };
 }
 
+export function restoreTimer(status: 'running' | 'paused', remainingMs: number, selectedSeconds: number, now = Date.now()): TimerSnapshot {
+  const safeRemainingMs = Math.min(MAX_TIMER_SECONDS * SECOND_MS, Math.max(0, remainingMs));
+  const safeSelectedSeconds = Math.min(MAX_TIMER_SECONDS, Math.max(1, Math.ceil(selectedSeconds)));
+  return {
+    status,
+    selectedSeconds: safeSelectedSeconds,
+    remainingMs: safeRemainingMs,
+    deadline: status === 'running' ? now + safeRemainingMs : null,
+  };
+}
+
 export function formatTimerTime(milliseconds: number): string {
   const totalSeconds = Math.ceil(Math.max(0, milliseconds) / SECOND_MS);
   const hours = Math.floor(totalSeconds / 3_600);

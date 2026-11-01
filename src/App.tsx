@@ -10,9 +10,10 @@ import {
 import { TimeUnitControl, type TimeUnit } from './TimeUnitControl';
 import { useTimer } from './use-timer';
 import {
-  getIndicatorDiagnostics,
   initializeZoom,
+  getIndicatorDiagnostics,
   pauseIndicator,
+  readNativeTimer,
   removeTimerIndicator,
   requestedApis,
   resumeIndicator,
@@ -30,7 +31,7 @@ type NoticeTone = 'info' | 'success' | 'warning';
 type Notice = { tone: NoticeTone; text: string };
 
 export default function App() {
-  const { timer, timerRef, start, pause, resume, reset, chooseDuration, setDuration } = useTimer();
+  const { timer, timerRef, start, pause, resume, reset, chooseDuration, setDuration, restore } = useTimer();
   const [selectedUnit, setSelectedUnit] = useState<TimeUnit | null>(null);
   const [checkState, setCheckState] = useState<CheckState>('loading');
   const [session, setSession] = useState<ZoomSession | null>(null);
@@ -50,7 +51,7 @@ export default function App() {
 
     void operation.then((result) => {
       if (sequence !== noticeSequence.current) return;
-      setNotice({ tone: result.ok ? 'success' : 'warning', text: result.message });
+      setNotice({ tone: result.ok ? 'info' : 'warning', text: result.message });
     });
   }
 
@@ -82,16 +83,19 @@ export default function App() {
       return;
     }
 
-    reportIndicatorOperation(removeTimerIndicator(currentSession), 'Encerrando o timer e removendo o indicador…');
+    reportIndicatorOperation(removeTimerIndicator(currentSession), 'Encerrando o timer nativo no Zoom…');
   }
 
-  useEffect(() => subscribeToIndicatorDiagnostics(setIndicatorDiagnostics), []);
+  useEffect(() => {
+    const unsubscribe = subscribeToIndicatorDiagnostics(setIndicatorDiagnostics);
+    return unsubscribe;
+  }, []);
 
   useEffect(() => {
     let active = true;
 
     void initializeZoom()
-      .then((initializedSession) => {
+      .then(async (initializedSession) => {
         if (!active) return;
         sessionRef.current = initializedSession;
         setSession(initializedSession);
@@ -111,7 +115,7 @@ export default function App() {
           reset();
           reportIndicatorOperation(
             removeTimerIndicator(initializedSession),
-            'A reunião terminou; encerrando o timer e removendo o indicador…',
+            'A reunião terminou; encerrando o timer nativo…',
           );
         });
         meetingEndUnsubscribe.current = unsubscribe;
@@ -124,6 +128,15 @@ export default function App() {
             setIndicatorTimer(initializedSession, seconds, currentTimer.status === 'paused'),
             'Publicando o timer local no Zoom…',
           );
+        } else {
+          const nativeTimer = await readNativeTimer(initializedSession);
+          if (!active || timerRef.current !== currentTimer) return;
+          if (nativeTimer) {
+            restore(nativeTimer.status, nativeTimer.remainingMs, nativeTimer.selectedSeconds);
+            setNotice({ tone: 'info', text: 'O painel do operador espelha o timer retornado pelo SDK. Os dígitos para participantes ainda não foram confirmados.' });
+          } else {
+            reportLocalOnly(`Painel local em ${formatTimerTime(remainingTime(timerRef.current))}; o estado do timer nativo não pôde ser lido. Os dígitos para participantes não foram confirmados.`);
+          }
         }
       })
       .catch((error: unknown) => {
@@ -144,7 +157,7 @@ export default function App() {
       indicatorEventUnsubscribe.current?.();
       indicatorEventUnsubscribe.current = null;
     };
-  }, [reset, timerRef]);
+  }, [reset, restore, timerRef]);
 
   useEffect(() => {
     const justFinished = timer.status === 'finished' && previousStatus.current === 'running';
@@ -388,7 +401,7 @@ export default function App() {
             </ul>
             <div className="indicator-log-header">
               <h2>Registro do indicador</h2>
-              <span>{indicatorDiagnostics.length} eventos · mais recentes primeiro</span>
+              <span>{indicatorDiagnostics.length} eventos</span>
             </div>
             {indicatorDiagnostics.length ? (
               <ol className="indicator-log" aria-live="polite">

@@ -1,5 +1,11 @@
 # Timer compartilhado para Zoom
 
+## Estado da integração
+
+Consulte o [diagnóstico dos dígitos, da sincronização e das versões](docs/analise-diagnostico/zoom-digitos-sincronizacao-e-versoes.md) para identificar a base de código examinada, o deployment correspondente e as limitações comprovadas. A causa dos dígitos nativos ausentes permanece inconclusiva; o funcionamento do painel e a resposta `Success` do SDK não confirmam a exibição aos participantes.
+
+Os registros por etapa abaixo e os documentos anteriores preservam o histórico. A [pesquisa](docs/pesquisa/resultado.md) contém exemplos com escala temporal antiga; suas recomendações devem ser confrontadas com o diagnóstico de referência.
+
 ## Objetivo
 
 Criar um Zoom App simples para controlar um cronômetro de reunião com opções rápidas de 3, 5 e 10 minutos. O timer deve aparecer na interface do Zoom por meio do indicador dinâmico do Zoom Apps SDK. Durante a contagem, o visor deve ficar verde e mudar para vermelho quando restar 1 minuto ou menos.

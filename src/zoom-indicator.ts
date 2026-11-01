@@ -1,5 +1,6 @@
 import zoomSdk from '@zoom/appssdk';
 import type { Apis, ConfigResponse } from '@zoom/appssdk';
+import { createCountdownPayload, createTimerActionPayload, TIMER_INDICATOR_TEXT } from './zoom-timer-payload';
 
 export const requestedApis: Apis[] = [
   'getSupportedJsApis',
@@ -9,8 +10,6 @@ export const requestedApis: Apis[] = [
   'onSetDynamicIndicator',
   'onMeeting',
 ];
-
-export const TIMER_INDICATOR_TEXT = 'Timer Zoom';
 
 export type ZoomSession = {
   config: ConfigResponse;
@@ -29,8 +28,15 @@ export type IndicatorDiagnostic = {
   details: string;
 };
 
+export type NativeTimerReading = {
+  status: 'running' | 'paused';
+  remainingMs: number;
+  selectedSeconds: number;
+};
+
 let indicatorQueue: Promise<void> = Promise.resolve();
 let nextDiagnosticId = 1;
+let nextCallId = 1;
 const diagnosticEntries: IndicatorDiagnostic[] = [];
 const diagnosticListeners = new Set<(entries: IndicatorDiagnostic[]) => void>();
 
@@ -42,7 +48,7 @@ function publishDiagnostics() {
 function recordDiagnostic(operation: string, details: unknown) {
   diagnosticEntries.unshift({
     id: nextDiagnosticId++,
-    timestamp: new Date().toLocaleTimeString('pt-BR'),
+    timestamp: new Date().toISOString(),
     operation,
     details: responseSummary(details),
   });
@@ -84,6 +90,12 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'erro não detalhado pelo cliente Zoom';
 }
 
+function errorDetails(error: unknown) {
+  return error instanceof Error
+    ? { name: error.name, message: error.message, stack: error.stack }
+    : { value: error };
+}
+
 function responseSummary(response: unknown): string {
   if (response === undefined) return 'undefined';
   if (response === null) return 'null';
@@ -95,9 +107,33 @@ function responseSummary(response: unknown): string {
   }
 }
 
+function responseMessage(response: unknown): string | undefined {
+  if (typeof response !== 'object' || response === null || !('message' in response)) return undefined;
+  const { message } = response;
+  return typeof message === 'string' ? message : undefined;
+}
+
 function isSuccess(response: unknown): boolean {
-  return typeof response === 'object' && response !== null && 'message' in response
-    && response.message === 'Success';
+  return response === 'Success' || responseMessage(response) === 'Success';
+}
+
+function recordIndicatorRead(operation: string, response: unknown) {
+  const timer = typeof response === 'object' && response !== null && 'timer' in response
+    ? response.timer
+    : undefined;
+  const timerValues = typeof timer === 'object' && timer !== null
+    ? timer as { start?: unknown; current?: unknown }
+    : null;
+
+  recordDiagnostic(operation, {
+    response,
+    timerState: timerValues
+      ? {
+          startSeconds: typeof timerValues.start === 'number' ? timerValues.start / 1_000 : undefined,
+          currentSeconds: typeof timerValues.current === 'number' ? timerValues.current / 1_000 : undefined,
+        }
+      : 'estado do timer ausente na leitura',
+  });
 }
 
 async function callSetDynamicIndicator(
@@ -106,59 +142,42 @@ async function callSetDynamicIndicator(
   options: Parameters<typeof zoomSdk.setDynamicIndicator>[0],
   readAgainAfterTwoSeconds = false,
 ): Promise<unknown> {
-  recordDiagnostic(`${operation} · envio`, { request: options });
+  const call = `${operation} #${nextCallId++}`;
+  recordDiagnostic(`${call} · envio`, { request: options });
   let response: unknown;
-
   try {
     response = await zoomSdk.setDynamicIndicator(options);
-    recordDiagnostic(`${operation} · retorno`, { response });
+    recordDiagnostic(`${call} · retorno`, { type: typeof response, response, accepted: isSuccess(response) });
   } catch (error) {
-    recordDiagnostic(`${operation} · erro`, { error: errorMessage(error) });
+    recordDiagnostic(`${call} · exceção`, errorDetails(error));
     throw error;
   }
 
   if (supports(session, 'getDynamicIndicator')) {
     try {
       const current = await zoomSdk.getDynamicIndicator();
-      recordDiagnostic('getDynamicIndicator · leitura após atualização', current);
+      recordIndicatorRead(`${call} · leitura após atualização`, current);
     } catch (error) {
-      recordDiagnostic('getDynamicIndicator · erro na leitura', { error: errorMessage(error) });
-    }
-
-    if (readAgainAfterTwoSeconds) {
-      await new Promise<void>((resolve) => window.setTimeout(resolve, 2_000));
-      try {
-        const current = await zoomSdk.getDynamicIndicator();
-        recordDiagnostic('getDynamicIndicator · segunda leitura após 2s', current);
-      } catch (error) {
-        recordDiagnostic('getDynamicIndicator · erro na segunda leitura', { error: errorMessage(error) });
-      }
+      recordDiagnostic(`${call} · erro na leitura`, errorDetails(error));
     }
   } else {
-    recordDiagnostic('getDynamicIndicator · não disponível', {});
+    recordDiagnostic(`${call} · getDynamicIndicator indisponível`, {});
+  }
+
+  if (readAgainAfterTwoSeconds && supports(session, 'getDynamicIndicator')) {
+    window.setTimeout(() => {
+      void zoomSdk.getDynamicIndicator()
+        .then((current) => recordIndicatorRead(`${call} · segunda leitura após 2s (pode refletir ação posterior)`, current))
+        .catch((error: unknown) => recordDiagnostic(`${call} · erro na segunda leitura`, errorDetails(error)));
+    }, 2_000);
   }
 
   return response;
 }
 
 async function setCountdown(session: ZoomSession, seconds: number, readAgainAfterTwoSeconds: boolean): Promise<IndicatorResult> {
-  const options: Parameters<typeof zoomSdk.setDynamicIndicator>[0] = {
-    text: TIMER_INDICATOR_TEXT,
-    timer: {
-      action: 'start',
-      direction: 'down',
-      start: Math.max(1, Math.ceil(seconds)) * 1_000,
-      withSound: false,
-      showNotification: false,
-    },
-  };
-  let response: unknown;
-
-  try {
-    response = await callSetDynamicIndicator(session, 'setDynamicIndicator · start', options, readAgainAfterTwoSeconds);
-  } catch (error) {
-    return failureResult(`Falha ao atualizar o indicador: ${errorMessage(error)}. A contagem local continua ativa.`);
-  }
+  const options = createCountdownPayload(seconds);
+  const response = await callSetDynamicIndicator(session, 'setDynamicIndicator · start', options, readAgainAfterTwoSeconds);
 
   return isSuccess(response)
     ? successResult('O cliente aceitou a atualização do indicador. A visibilidade entre participantes não foi confirmada nesta sessão.')
@@ -171,11 +190,40 @@ export async function initializeZoom(): Promise<ZoomSession> {
   recordDiagnostic('Zoom SDK · sessão inicializada', {
     product: config.product,
     clientVersion: config.clientVersion,
+    browserVersion: config.browserVersion,
     runningContext: config.runningContext,
-    supportedApis: supportedApis.filter((api) => requestedApis.includes(api)),
     unsupportedApis: config.unsupportedApis,
+    supportedApis,
   });
   return { config, supportedApis };
+}
+
+export async function readNativeTimer(session: ZoomSession): Promise<NativeTimerReading | null> {
+  if (!supports(session, 'getDynamicIndicator')) {
+    recordDiagnostic('getDynamicIndicator · leitura inicial indisponível', {});
+    return null;
+  }
+
+  try {
+    const response = await zoomSdk.getDynamicIndicator();
+    recordIndicatorRead('getDynamicIndicator · leitura inicial', response);
+    if (!response || typeof response !== 'object') return null;
+    if (response.text !== TIMER_INDICATOR_TEXT) return null;
+    const timer = response.timer;
+    if (timer?.direction !== 'down' || !['start', 'resume', 'pause'].includes(timer.action ?? '')) return null;
+    if (typeof timer.current !== 'number' || !Number.isFinite(timer.current) || timer.current <= 0) return null;
+    const selectedSeconds = typeof timer.start === 'number' && Number.isFinite(timer.start)
+      ? Math.ceil(timer.start / 1_000)
+      : Math.ceil(timer.current / 1_000);
+    return {
+      status: timer.action === 'pause' ? 'paused' : 'running',
+      remainingMs: timer.current,
+      selectedSeconds,
+    };
+  } catch (error) {
+    recordDiagnostic('getDynamicIndicator · exceção na leitura inicial', errorDetails(error));
+    return null;
+  }
 }
 
 export function setIndicatorTimer(session: ZoomSession, seconds: number, paused = false): Promise<IndicatorResult> {
@@ -188,14 +236,11 @@ export function setIndicatorTimer(session: ZoomSession, seconds: number, paused 
       const started = await setCountdown(session, seconds, !paused);
       if (!started.ok || !paused) return started;
 
-      const pauseOptions: Parameters<typeof zoomSdk.setDynamicIndicator>[0] = {
-        text: TIMER_INDICATOR_TEXT,
-        timer: { action: 'pause' },
-      };
+      const pauseOptions = createTimerActionPayload('pause');
       const pauseResponse = await callSetDynamicIndicator(session, 'setDynamicIndicator · pause após start', pauseOptions);
 
       return isSuccess(pauseResponse)
-        ? successResult('Tempo atualizado e mantido pausado no indicador do Zoom.')
+        ? successResult('O cliente aceitou a atualização e a pausa. Os dígitos para participantes ainda não foram confirmados.')
         : failureResult(`O Zoom não confirmou a pausa do indicador (resposta: ${responseSummary(pauseResponse)}). O timer local continua pausado.`);
     } catch (error) {
       return failureResult(`Falha ao atualizar o indicador: ${errorMessage(error)}. A contagem local continua ativa.`);
@@ -223,10 +268,7 @@ function sendTimerAction(
 
   return serializeIndicatorAction(async () => {
     try {
-      const options: Parameters<typeof zoomSdk.setDynamicIndicator>[0] = {
-        text: TIMER_INDICATOR_TEXT,
-        timer: { action },
-      };
+      const options = createTimerActionPayload(action);
       const response = await callSetDynamicIndicator(session, `setDynamicIndicator · ${action}`, options);
       return isSuccess(response)
         ? successResult(`${successMessage} A visibilidade entre participantes não foi confirmada nesta sessão.`)
@@ -243,44 +285,50 @@ export function removeTimerIndicator(session: ZoomSession): Promise<IndicatorRes
   }
 
   return serializeIndicatorAction(async () => {
-    try {
-      if (supports(session, 'getDynamicIndicator')) {
+    let canRemove = false;
+    if (supports(session, 'getDynamicIndicator')) {
+      try {
         const currentIndicator = await zoomSdk.getDynamicIndicator();
-        recordDiagnostic('getDynamicIndicator · antes de remover', currentIndicator);
-        if (currentIndicator.text !== TIMER_INDICATOR_TEXT) {
+        recordIndicatorRead('getDynamicIndicator · antes de encerrar', currentIndicator);
+        if (currentIndicator?.text && currentIndicator.text !== TIMER_INDICATOR_TEXT) {
           return failureResult('Timer local encerrado. O indicador atual não pertence a este timer e foi preservado.');
         }
+        canRemove = currentIndicator?.text === TIMER_INDICATOR_TEXT;
+      } catch (error) {
+        recordDiagnostic('getDynamicIndicator · exceção antes de encerrar', errorDetails(error));
       }
+    }
 
-      if (supports(session, 'removeDynamicIndicator')) {
-        try {
-          const response = await zoomSdk.removeDynamicIndicator();
-          recordDiagnostic('removeDynamicIndicator · retorno', { response });
-          if (isSuccess(response)) return successResult('Timer encerrado e indicador removido do Zoom.');
-        } catch (error) {
-          recordDiagnostic('removeDynamicIndicator · erro', { error: errorMessage(error) });
-          // If removal is rejected but setDynamicIndicator is available, end its timer below.
+    let ended = false;
+    if (supports(session, 'setDynamicIndicator')) {
+      try {
+        const response = await callSetDynamicIndicator(session, 'setDynamicIndicator · end', createTimerActionPayload('end'));
+        if (!isSuccess(response)) {
+          return failureResult(`Timer encerrado localmente; o cliente não confirmou o encerramento nativo (resposta: ${responseSummary(response)}).`);
         }
+        ended = true;
+      } catch (error) {
+        return failureResult(`Timer encerrado localmente; a chamada de encerramento nativo falhou: ${errorMessage(error)}.`);
       }
+    }
 
-      if (supports(session, 'setDynamicIndicator')) {
-        try {
-          const options: Parameters<typeof zoomSdk.setDynamicIndicator>[0] = {
-            text: TIMER_INDICATOR_TEXT,
-            timer: { action: 'end' },
-          };
-          const response = await callSetDynamicIndicator(session, 'setDynamicIndicator · end', options);
-          return isSuccess(response)
-            ? successResult('Timer encerrado; o indicador continua visível sem contagem neste cliente.')
-            : failureResult('Timer encerrado localmente; o cliente não confirmou o encerramento do indicador.');
-        } catch (error) {
-          return failureResult(`Timer encerrado localmente; não foi possível encerrar o indicador: ${errorMessage(error)}.`);
-        }
-      }
+    if (!canRemove || !supports(session, 'removeDynamicIndicator')) {
+      return ended
+        ? successResult('O cliente aceitou encerrar o timer nativo. A remoção da entrada e o resultado visual não foram confirmados.')
+        : failureResult('Timer encerrado localmente; não foi possível confirmar o encerramento ou a remoção nativa.');
+    }
 
-      return failureResult('Timer encerrado localmente; o cliente não confirmou a remoção do indicador.');
+    try {
+      const response: unknown = await zoomSdk.removeDynamicIndicator();
+      recordDiagnostic('removeDynamicIndicator · retorno', { type: typeof response, response, accepted: isSuccess(response) });
+      return isSuccess(response)
+        ? successResult(ended
+          ? 'O cliente aceitou encerrar o timer e remover o indicador. O resultado visual não foi confirmado.'
+          : 'O cliente aceitou remover o indicador. O resultado visual não foi confirmado.')
+        : failureResult(`${ended ? 'O timer nativo foi encerrado, mas a remoção' : 'A remoção do indicador'} não foi confirmada (resposta: ${responseSummary(response)}).`);
     } catch (error) {
-      return failureResult(`Timer encerrado localmente; não foi possível remover o indicador: ${errorMessage(error)}.`);
+      recordDiagnostic('removeDynamicIndicator · exceção', errorDetails(error));
+      return failureResult(`${ended ? 'O timer nativo foi encerrado, mas a remoção' : 'A remoção do indicador'} falhou: ${errorMessage(error)}.`);
     }
   });
 }
@@ -306,9 +354,8 @@ export function subscribeToIndicatorSet(session: ZoomSession): (() => void) | nu
     return null;
   }
 
-  const handler: Parameters<typeof zoomSdk.onSetDynamicIndicator>[0] = (event) => {
-    const { participantUUID: _participantUUID, screenName: _screenName, ...indicatorPayload } = event;
-    recordDiagnostic('onSetDynamicIndicator · evento recebido', indicatorPayload);
+  const handler = (event: Parameters<typeof zoomSdk.onSetDynamicIndicator>[0] extends (event: infer T) => void ? T : never) => {
+    recordIndicatorRead('onSetDynamicIndicator · evento recebido', event);
   };
 
   try {
@@ -316,7 +363,7 @@ export function subscribeToIndicatorSet(session: ZoomSession): (() => void) | nu
     recordDiagnostic('onSetDynamicIndicator · listener registrado', {});
     return () => zoomSdk.removeEventListener('onSetDynamicIndicator', handler);
   } catch (error) {
-    recordDiagnostic('onSetDynamicIndicator · erro ao registrar', { error: errorMessage(error) });
+    recordDiagnostic('onSetDynamicIndicator · erro ao registrar', errorDetails(error));
     return null;
   }
 }

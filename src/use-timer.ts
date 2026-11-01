@@ -4,6 +4,7 @@ import {
   createInitialTimer,
   pauseTimer,
   resetTimer,
+  restoreTimer,
   resumeTimer,
   selectDuration,
   setTimerDuration,
@@ -37,6 +38,8 @@ export function useTimer() {
   const reset = useCallback(() => commit(resetTimer(timerRef.current)), [commit]);
   const chooseDuration = useCallback((seconds: number) => commit(selectDuration(timerRef.current, seconds)), [commit]);
   const setDuration = useCallback((seconds: number) => commit(setTimerDuration(timerRef.current, seconds)), [commit]);
+  const restore = useCallback((status: 'running' | 'paused', remainingMs: number, selectedSeconds: number) =>
+    commit(restoreTimer(status, remainingMs, selectedSeconds)), [commit]);
 
-  return { timer, timerRef, start, pause, resume, reset, chooseDuration, setDuration };
+  return { timer, timerRef, start, pause, resume, reset, chooseDuration, setDuration, restore };
 }
