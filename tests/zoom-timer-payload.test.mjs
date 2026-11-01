@@ -10,7 +10,6 @@ test('duração em segundos vira milissegundos para o Zoom', () => {
 
 test('start publica uma contagem regressiva de cinco minutos', () => {
   assert.deepEqual(createCountdownPayload(300), {
-    text: 'Timer Zoom',
     timer: {
       action: 'start',
       direction: 'down',
