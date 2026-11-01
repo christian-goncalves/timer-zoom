@@ -104,6 +104,7 @@ async function callSetDynamicIndicator(
   session: ZoomSession,
   operation: string,
   options: Parameters<typeof zoomSdk.setDynamicIndicator>[0],
+  readAgainAfterTwoSeconds = false,
 ): Promise<unknown> {
   recordDiagnostic(`${operation} · envio`, { request: options });
   let response: unknown;
@@ -123,6 +124,16 @@ async function callSetDynamicIndicator(
     } catch (error) {
       recordDiagnostic('getDynamicIndicator · erro na leitura', { error: errorMessage(error) });
     }
+
+    if (readAgainAfterTwoSeconds) {
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 2_000));
+      try {
+        const current = await zoomSdk.getDynamicIndicator();
+        recordDiagnostic('getDynamicIndicator · segunda leitura após 2s', current);
+      } catch (error) {
+        recordDiagnostic('getDynamicIndicator · erro na segunda leitura', { error: errorMessage(error) });
+      }
+    }
   } else {
     recordDiagnostic('getDynamicIndicator · não disponível', {});
   }
@@ -130,13 +141,13 @@ async function callSetDynamicIndicator(
   return response;
 }
 
-async function setCountdown(session: ZoomSession, seconds: number): Promise<IndicatorResult> {
+async function setCountdown(session: ZoomSession, seconds: number, readAgainAfterTwoSeconds: boolean): Promise<IndicatorResult> {
   const options: Parameters<typeof zoomSdk.setDynamicIndicator>[0] = {
     text: TIMER_INDICATOR_TEXT,
     timer: {
       action: 'start',
       direction: 'down',
-      start: Math.max(1, Math.ceil(seconds)),
+      start: Math.max(1, Math.ceil(seconds)) * 1_000,
       withSound: false,
       showNotification: false,
     },
@@ -144,7 +155,7 @@ async function setCountdown(session: ZoomSession, seconds: number): Promise<Indi
   let response: unknown;
 
   try {
-    response = await callSetDynamicIndicator(session, 'setDynamicIndicator · start', options);
+    response = await callSetDynamicIndicator(session, 'setDynamicIndicator · start', options, readAgainAfterTwoSeconds);
   } catch (error) {
     return failureResult(`Falha ao atualizar o indicador: ${errorMessage(error)}. A contagem local continua ativa.`);
   }
@@ -174,7 +185,7 @@ export function setIndicatorTimer(session: ZoomSession, seconds: number, paused 
 
   return serializeIndicatorAction(async () => {
     try {
-      const started = await setCountdown(session, seconds);
+      const started = await setCountdown(session, seconds, !paused);
       if (!started.ok || !paused) return started;
 
       const pauseOptions: Parameters<typeof zoomSdk.setDynamicIndicator>[0] = {
