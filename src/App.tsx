@@ -119,7 +119,16 @@ export default function App() {
           );
         });
         meetingEndUnsubscribe.current = unsubscribe;
-        indicatorEventUnsubscribe.current = subscribeToIndicatorSet(initializedSession) ?? null;
+        indicatorEventUnsubscribe.current = subscribeToIndicatorSet(initializedSession, (update) => {
+          if (update.kind === 'end') {
+            reset();
+            setNotice({ tone: 'info', text: 'O timer compartilhado foi encerrado no Zoom.' });
+            return;
+          }
+
+          restore(update.reading.status, update.reading.remainingMs, update.reading.selectedSeconds);
+          setNotice({ tone: 'info', text: 'O painel local foi sincronizado com o estado do timer nativo do Zoom.' });
+        }) ?? null;
 
         const currentTimer = timerRef.current;
         if (currentTimer.status === 'running' || currentTimer.status === 'paused') {

@@ -1,6 +1,7 @@
 import zoomSdk from '@zoom/appssdk';
 import type { Apis, ConfigResponse } from '@zoom/appssdk';
 import { createCountdownPayload, createTimerActionPayload, TIMER_INDICATOR_TEXT } from './zoom-timer-payload';
+import { parseNativeIndicatorUpdate, type NativeIndicatorUpdate, type NativeTimerReading } from './native-timer-state';
 
 export const requestedApis: Apis[] = [
   'getSupportedJsApis',
@@ -26,12 +27,6 @@ export type IndicatorDiagnostic = {
   timestamp: string;
   operation: string;
   details: string;
-};
-
-export type NativeTimerReading = {
-  status: 'running' | 'paused';
-  remainingMs: number;
-  selectedSeconds: number;
 };
 
 let indicatorQueue: Promise<void> = Promise.resolve();
@@ -207,19 +202,8 @@ export async function readNativeTimer(session: ZoomSession): Promise<NativeTimer
   try {
     const response = await zoomSdk.getDynamicIndicator();
     recordIndicatorRead('getDynamicIndicator · leitura inicial', response);
-    if (!response || typeof response !== 'object') return null;
-    if (response.text !== TIMER_INDICATOR_TEXT) return null;
-    const timer = response.timer;
-    if (timer?.direction !== 'down' || !['start', 'resume', 'pause'].includes(timer.action ?? '')) return null;
-    if (typeof timer.current !== 'number' || !Number.isFinite(timer.current) || timer.current <= 0) return null;
-    const selectedSeconds = typeof timer.start === 'number' && Number.isFinite(timer.start)
-      ? Math.ceil(timer.start / 1_000)
-      : Math.ceil(timer.current / 1_000);
-    return {
-      status: timer.action === 'pause' ? 'paused' : 'running',
-      remainingMs: timer.current,
-      selectedSeconds,
-    };
+    const update = parseNativeIndicatorUpdate(response);
+    return update?.kind === 'timer' ? update.reading : null;
   } catch (error) {
     recordDiagnostic('getDynamicIndicator · exceção na leitura inicial', errorDetails(error));
     return null;
@@ -348,7 +332,10 @@ export function subscribeToMeetingEnd(session: ZoomSession, onEnd: () => void): 
   }
 }
 
-export function subscribeToIndicatorSet(session: ZoomSession): (() => void) | null {
+export function subscribeToIndicatorSet(
+  session: ZoomSession,
+  onUpdate?: (update: NativeIndicatorUpdate) => void,
+): (() => void) | null {
   if (!supports(session, 'onSetDynamicIndicator')) {
     recordDiagnostic('onSetDynamicIndicator · não disponível', {});
     return null;
@@ -356,6 +343,8 @@ export function subscribeToIndicatorSet(session: ZoomSession): (() => void) | nu
 
   const handler = (event: Parameters<typeof zoomSdk.onSetDynamicIndicator>[0] extends (event: infer T) => void ? T : never) => {
     recordIndicatorRead('onSetDynamicIndicator · evento recebido', event);
+    const update = parseNativeIndicatorUpdate(event);
+    if (update) onUpdate?.(update);
   };
 
   try {
